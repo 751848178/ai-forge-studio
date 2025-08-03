@@ -1,0 +1,213 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户模型
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联的项目
+  projects Project[]
+  
+  @@map("users")
+}
+
+// 项目模型
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      ProjectStatus @default(PLANNING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联用户
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 需求文档
+  requirements Requirement[]
+  
+  // 功能模块
+  modules Module[]
+
+  @@map("projects")
+}
+
+// 需求文档模型
+model Requirement {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   // 原始需求文档内容
+  type        RequirementType @default(FUNCTIONAL)
+  priority    Priority @default(MEDIUM)
+  status      RequirementStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联项目
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // AI分析结果
+  analysis RequirementAnalysis?
+
+  @@map("requirements")
+}
+
+// 需求分析结果模型
+model RequirementAnalysis {
+  id          String   @id @default(cuid())
+  summary     String   // AI生成的需求摘要
+  keyFeatures Json     // 提取的关键功能点
+  complexity  Complexity @default(MEDIUM)
+  estimatedHours Int?   // 预估工时
+  suggestions String?  // AI建议
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联需求
+  requirementId String @unique
+  requirement   Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@map("requirement_analyses")
+}
+
+// 功能模块模型
+model Module {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  type        ModuleType @default(FEATURE)
+  priority    Priority @default(MEDIUM)
+  status      ModuleStatus @default(TODO)
+  estimatedHours Int?
+  actualHours Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联项目
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // 开发任务
+  tasks Task[]
+
+  @@map("modules")
+}
+
+// 开发任务模型（原子化代码生成单元）
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  type        TaskType @default(DEVELOPMENT)
+  priority    Priority @default(MEDIUM)
+  status      TaskStatus @default(TODO)
+  estimatedHours Int?
+  actualHours Int?
+  
+  // 技术栈信息
+  techStack   Json?    // 使用的技术栈
+  
+  // AI生成的代码
+  generatedCode String?
+  codeLanguage  String?
+  
+  // 文件路径（如果是文件创建任务）
+  filePath    String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联模块
+  moduleId String
+  module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("tasks")
+}
+
+// 枚举类型定义
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  TESTING
+  COMPLETED
+  ARCHIVED
+}
+
+enum RequirementType {
+  FUNCTIONAL
+  NON_FUNCTIONAL
+  BUSINESS
+  TECHNICAL
+}
+
+enum RequirementStatus {
+  PENDING
+  ANALYZING
+  ANALYZED
+  APPROVED
+  REJECTED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum Complexity {
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+enum ModuleType {
+  FEATURE
+  COMPONENT
+  SERVICE
+  UTILITY
+  INTEGRATION
+}
+
+enum ModuleStatus {
+  TODO
+  IN_PROGRESS
+  TESTING
+  COMPLETED
+  BLOCKED
+}
+
+enum TaskType {
+  DEVELOPMENT
+  TESTING
+  DOCUMENTATION
+  DEPLOYMENT
+  REFACTORING
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  TESTING
+  COMPLETED
+  BLOCKED
+}
