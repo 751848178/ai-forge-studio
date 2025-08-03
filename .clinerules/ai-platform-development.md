@@ -1,6 +1,13 @@
 ## Brief overview
 Development guidelines for AI-driven platforms using Next.js, React, TypeScript, and modern full-stack architecture. These rules focus on building scalable, type-safe applications with AI integration capabilities.
 
+## Communication requirements
+- All conversations with Cline must be conducted in Chinese
+- Code comments and documentation should be in Chinese
+- Error messages and user-facing text must be in Chinese
+- Variable and function names should follow English conventions
+- API documentation should be in Chinese
+
 ## Tech stack preferences
 - Use Next.js 15 with App Router for full-stack applications
 - Prefer React 19 with TypeScript for type safety
