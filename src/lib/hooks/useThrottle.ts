@@ -1,0 +1,28 @@
+import { useEffect, useRef, useState } from 'react'
+
+/**
+ * 节流Hook
+ * 限制值的更新频率，在指定时间间隔内最多更新一次
+ */
+export function useThrottle<T>(value: T, delay: number): T {
+  const [throttledValue, setThrottledValue] = useState<T>(value)
+  const lastExecuted = useRef<number>(Date.now())
+
+  useEffect(() => {
+    if (Date.now() >= lastExecuted.current + delay) {
+      lastExecuted.current = Date.now()
+      setThrottledValue(value)
+    } else {
+      const timer = setTimeout(() => {
+        lastExecuted.current = Date.now()
+        setThrottledValue(value)
+      }, delay)
+
+      return () => clearTimeout(timer)
+    }
+  }, [value, delay])
+
+  return throttledValue
+}
+
+export default useThrottle

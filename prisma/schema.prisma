@@ -7,23 +7,117 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
+}
+
+// 租户模型
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  domain    String?
+  logo      String?
+  settings  Json?
+  plan      TenantPlan @default(FREE)
+  status    TenantStatus @default(ACTIVE)
+  adminId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 租户成员
+  members   TenantMember[]
+  
+  // 租户配额
+  quota     TenantQuota?
+  
+  // 租户数据
+  projects     Project[]
+  requirements Requirement[]
+  modules      Module[]
+  tasks        Task[]
+  aiRequestLogs AIRequestLog[]
+
+  @@map("tenants")
+}
+
+// 租户成员模型
+model TenantMember {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  role      TenantRole @default(MEMBER)
+  status    MemberStatus @default(ACTIVE)
+  joinedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@map("tenant_members")
+}
+
+// 租户配额模型
+model TenantQuota {
+  id               String   @id @default(cuid())
+  tenantId         String   @unique
+  maxProjects      Int      @default(10)
+  maxUsers         Int      @default(5)
+  maxRequirements  Int      @default(100)
+  maxAIRequests    Int      @default(1000)
+  maxStorage       Int      @default(1073741824) // 1GB in bytes
+  usedProjects     Int      @default(0)
+  usedUsers        Int      @default(0)
+  usedRequirements Int      @default(0)
+  usedAIRequests   Int      @default(0)
+  usedStorage      Int      @default(0)
+  resetAt          DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // 关联
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_quotas")
 }
 
 // 用户模型
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  avatar    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  avatar          String?
+  currentTenantId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  // 关联的项目
-  projects Project[]
+  // 租户成员关系
+  tenantMemberships TenantMember[]
   
   @@map("users")
+}
+
+// AI请求日志模型
+model AIRequestLog {
+  id           String   @id @default(cuid())
+  tenantId     String
+  userId       String
+  requestType  AIRequestType
+  resourceId   String?
+  resourceType String?
+  tokens       Int?
+  cost         Float?
+  status       String   @default("SUCCESS")
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  // 关联
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("ai_request_logs")
 }
 
 // 项目模型
@@ -32,12 +126,12 @@ model Project {
   name        String
   description String?
   status      ProjectStatus @default(PLANNING)
+  tenantId    String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // 关联用户
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 关联租户
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // 需求文档
   requirements Requirement[]
@@ -56,8 +150,12 @@ model Requirement {
   type        RequirementType @default(FUNCTIONAL)
   priority    Priority @default(MEDIUM)
   status      RequirementStatus @default(PENDING)
+  tenantId    String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // 关联租户
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // 关联项目
   projectId String
@@ -97,8 +195,12 @@ model Module {
   status      ModuleStatus @default(TODO)
   estimatedHours Int?
   actualHours Int?
+  tenantId    String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // 关联租户
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // 关联项目
   projectId String
@@ -131,8 +233,12 @@ model Task {
   // 文件路径（如果是文件创建任务）
   filePath    String?
   
+  tenantId    String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // 关联租户
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // 关联模块
   moduleId String
@@ -210,4 +316,39 @@ enum TaskStatus {
   TESTING
   COMPLETED
   BLOCKED
+}
+
+enum TenantPlan {
+  FREE
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum TenantRole {
+  ADMIN
+  MANAGER
+  MEMBER
+  VIEWER
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+enum AIRequestType {
+  REQUIREMENT_ANALYSIS
+  MODULE_GENERATION
+  TASK_GENERATION
+  CODE_GENERATION
+  FLOWCHART_GENERATION
+  E2E_GENERATION
 }

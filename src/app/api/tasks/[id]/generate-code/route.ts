@@ -5,10 +5,10 @@ import { generateCode } from '@/lib/openai'
 // POST /api/tasks/[id]/generate-code - 为任务生成代码
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const taskId = params.id
+    const { id: taskId } = await params
 
     // 获取任务信息
     const task = await prisma.task.findUnique({

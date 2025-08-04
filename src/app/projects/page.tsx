@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { 
-  Layout, 
   Card, 
   Table, 
   Button, 
@@ -12,9 +11,10 @@ import {
   Modal, 
   Form, 
   Input, 
-  Select,
+  Select, 
   message,
-  Popconfirm
+  Popconfirm,
+  Tooltip
 } from 'antd'
 import { 
   PlusOutlined, 
@@ -23,19 +23,34 @@ import {
   EyeOutlined,
   ProjectOutlined
 } from '@ant-design/icons'
-import { useAppStore, Project } from '@/store'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { request } from '@/lib/utils/request'
+import MainLayout from '@/components/layout/MainLayout'
+import type { ColumnsType } from 'antd/es/table'
 
-const { Header, Content } = Layout
 const { Title } = Typography
 const { TextArea } = Input
 
+interface Project {
+  id: string
+  name: string
+  description?: string
+  status: 'PLANNING' | 'IN_PROGRESS' | 'TESTING' | 'COMPLETED' | 'ARCHIVED'
+  createdAt: string
+  updatedAt: string
+  _count: {
+    requirements: number
+    modules: number
+  }
+}
+
 const statusColors = {
   PLANNING: 'blue',
-  IN_PROGRESS: 'orange',
-  TESTING: 'purple',
-  COMPLETED: 'green',
-  ARCHIVED: 'gray'
+  IN_PROGRESS: 'processing',
+  TESTING: 'warning',
+  COMPLETED: 'success',
+  ARCHIVED: 'default'
 }
 
 const statusLabels = {
@@ -47,143 +62,114 @@ const statusLabels = {
 }
 
 export default function ProjectsPage() {
-  const { 
-    projects, 
-    setProjects, 
-    addProject, 
-    updateProject,
-    user,
-    loading,
-    setLoading 
-  } = useAppStore()
-
-  const [isModalVisible, setIsModalVisible] = useState(false)
+  const router = useRouter()
+  const { user, isAuthenticated } = useAuth()
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(false)
+  const [modalVisible, setModalVisible] = useState(false)
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [form] = Form.useForm()
 
-  // 加载项目列表
-  useEffect(() => {
-    if (user) {
-      loadProjects()
-    }
-  }, [user])
+  // 获取项目列表
+  const fetchProjects = async () => {
+    if (!isAuthenticated) return
 
-  const loadProjects = async () => {
-    if (!user) return
-    
     setLoading(true)
     try {
-      const response = await fetch(`/api/projects?userId=${user.id}`)
-      if (response.ok) {
-        const data = await response.json()
-        setProjects(data)
+      const result = await request.get<{ projects: Project[] }>('/projects')
+      if (result.success && result.data) {
+        setProjects(result.data.projects)
       } else {
-        message.error('加载项目列表失败')
+        message.error(result.error?.message || '获取项目列表失败')
       }
     } catch (error) {
-      console.error('Error loading projects:', error)
-      message.error('加载项目列表失败')
+      message.error('网络错误，请稍后重试')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCreateProject = () => {
+  useEffect(() => {
+    fetchProjects()
+  }, [isAuthenticated, user])
+
+  // 创建/更新项目
+  const handleSubmit = async (values: any) => {
+    try {
+      let result
+      if (editingProject) {
+        result = await request.put<Project>(`/projects/${editingProject.id}`, values)
+      } else {
+        result = await request.post<Project>('/projects', values)
+      }
+
+      if (result.success) {
+        message.success(editingProject ? '项目更新成功' : '项目创建成功')
+        setModalVisible(false)
+        setEditingProject(null)
+        form.resetFields()
+        fetchProjects()
+      } else {
+        message.error(result.error?.message || '操作失败')
+      }
+    } catch (error) {
+      message.error('网络错误，请稍后重试')
+    }
+  }
+
+  // 删除项目
+  const handleDelete = async (id: string) => {
+    try {
+      const result = await request.delete(`/projects/${id}`)
+      if (result.success) {
+        message.success('项目删除成功')
+        fetchProjects()
+      } else {
+        message.error(result.error?.message || '删除失败')
+      }
+    } catch (error) {
+      message.error('网络错误，请稍后重试')
+    }
+  }
+
+  // 打开编辑模态框
+  const handleEdit = (project: Project) => {
+    setEditingProject(project)
+    form.setFieldsValue({
+      name: project.name,
+      description: project.description,
+      status: project.status
+    })
+    setModalVisible(true)
+  }
+
+  // 打开新建模态框
+  const handleCreate = () => {
     setEditingProject(null)
     form.resetFields()
-    setIsModalVisible(true)
+    setModalVisible(true)
   }
 
-  const handleEditProject = (project: Project) => {
-    setEditingProject(project)
-    form.setFieldsValue(project)
-    setIsModalVisible(true)
-  }
-
-  const handleSubmit = async (values: any) => {
-    if (!user) return
-
-    setLoading(true)
-    try {
-      if (editingProject) {
-        // 更新项目
-        const response = await fetch(`/api/projects/${editingProject.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(values)
-        })
-        
-        if (response.ok) {
-          const updatedProject = await response.json()
-          updateProject(editingProject.id, updatedProject)
-          message.success('项目更新成功')
-        } else {
-          message.error('项目更新失败')
-        }
-      } else {
-        // 创建新项目
-        const response = await fetch('/api/projects', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...values, userId: user.id })
-        })
-        
-        if (response.ok) {
-          const newProject = await response.json()
-          addProject(newProject)
-          message.success('项目创建成功')
-        } else {
-          message.error('项目创建失败')
-        }
-      }
-      
-      setIsModalVisible(false)
-      form.resetFields()
-    } catch (error) {
-      console.error('Error saving project:', error)
-      message.error('操作失败')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleDeleteProject = async (projectId: string) => {
-    setLoading(true)
-    try {
-      const response = await fetch(`/api/projects/${projectId}`, {
-        method: 'DELETE'
-      })
-      
-      if (response.ok) {
-        setProjects(projects.filter(p => p.id !== projectId))
-        message.success('项目删除成功')
-      } else {
-        message.error('项目删除失败')
-      }
-    } catch (error) {
-      console.error('Error deleting project:', error)
-      message.error('项目删除失败')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const columns = [
+  const columns: ColumnsType<Project> = [
     {
       title: '项目名称',
       dataIndex: 'name',
       key: 'name',
-      render: (text: string, record: Project) => (
-        <Link href={`/projects/${record.id}`} className="text-blue-600 hover:text-blue-800">
-          {text}
-        </Link>
+      render: (text, record) => (
+        <Space>
+          <ProjectOutlined />
+          <a onClick={() => router.push(`/projects/${record.id}`)}>
+            {text}
+          </a>
+        </Space>
       )
     },
     {
       title: '描述',
       dataIndex: 'description',
       key: 'description',
-      ellipsis: true
+      ellipsis: true,
+      render: (text) => text || '-'
     },
     {
       title: '状态',
@@ -196,156 +182,152 @@ export default function ProjectsPage() {
       )
     },
     {
-      title: '需求数量',
-      key: 'requirementCount',
-      render: (record: Project) => record._count?.requirements || 0
+      title: '需求数',
+      key: 'requirements',
+      render: (_, record) => record._count.requirements
     },
     {
-      title: '模块数量',
-      key: 'moduleCount',
-      render: (record: Project) => record._count?.modules || 0
+      title: '模块数',
+      key: 'modules',
+      render: (_, record) => record._count.modules
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (date: string) => new Date(date).toLocaleDateString('zh-CN')
+      render: (date) => new Date(date).toLocaleDateString()
     },
     {
       title: '操作',
       key: 'actions',
-      render: (record: Project) => (
+      render: (_, record) => (
         <Space>
-          <Button 
-            type="link" 
-            icon={<EyeOutlined />}
-            href={`/projects/${record.id}`}
-          >
-            查看
-          </Button>
-          <Button 
-            type="link" 
-            icon={<EditOutlined />}
-            onClick={() => handleEditProject(record)}
-          >
-            编辑
-          </Button>
+          <Tooltip title="查看详情">
+            <Button 
+              type="text" 
+              icon={<EyeOutlined />}
+              onClick={() => router.push(`/projects/${record.id}`)}
+            />
+          </Tooltip>
+          <Tooltip title="编辑">
+            <Button 
+              type="text" 
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            />
+          </Tooltip>
           <Popconfirm
             title="确定要删除这个项目吗？"
-            description="删除后将无法恢复，包括所有相关的需求和任务。"
-            onConfirm={() => handleDeleteProject(record.id)}
+            description="删除后将无法恢复，相关的需求和模块也会被删除。"
+            onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Button 
-              type="link" 
-              danger 
-              icon={<DeleteOutlined />}
-            >
-              删除
-            </Button>
+            <Tooltip title="删除">
+              <Button 
+                type="text" 
+                danger 
+                icon={<DeleteOutlined />}
+              />
+            </Tooltip>
           </Popconfirm>
         </Space>
       )
     }
   ]
 
+  if (!isAuthenticated) {
+    return null
+  }
+
   return (
-    <Layout className="min-h-screen">
-      <Header className="bg-white shadow-sm border-b">
-        <div className="flex items-center justify-between h-full">
-          <div className="flex items-center space-x-4">
-            <ProjectOutlined className="text-2xl text-blue-600" />
-            <Title level={3} className="!mb-0 !text-gray-800">
-              项目管理
-            </Title>
-          </div>
+    <MainLayout>
+      <div>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          marginBottom: 24 
+        }}>
+          <Title level={2} style={{ margin: 0 }}>
+            项目管理
+          </Title>
           <Button 
             type="primary" 
             icon={<PlusOutlined />}
-            onClick={handleCreateProject}
+            onClick={handleCreate}
           >
-            创建项目
+            新建项目
           </Button>
         </div>
-      </Header>
 
-      <Content className="p-6 bg-gray-50">
-        <div className="max-w-7xl mx-auto">
-          <Card>
-            <Table
-              columns={columns}
-              dataSource={projects}
-              rowKey="id"
-              loading={loading}
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                showTotal: (total) => `共 ${total} 个项目`
-              }}
-            />
-          </Card>
-        </div>
-      </Content>
+        <Card>
+          <Table
+            columns={columns}
+            dataSource={projects}
+            rowKey="id"
+            loading={loading}
+            pagination={{
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 个项目`
+            }}
+          />
+        </Card>
 
-      {/* 创建/编辑项目模态框 */}
-      <Modal
-        title={editingProject ? '编辑项目' : '创建项目'}
-        open={isModalVisible}
-        onCancel={() => setIsModalVisible(false)}
-        footer={null}
-        width={600}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleSubmit}
+        <Modal
+          title={editingProject ? '编辑项目' : '新建项目'}
+          open={modalVisible}
+          onCancel={() => {
+            setModalVisible(false)
+            setEditingProject(null)
+            form.resetFields()
+          }}
+          onOk={() => form.submit()}
+          okText="确定"
+          cancelText="取消"
         >
-          <Form.Item
-            name="name"
-            label="项目名称"
-            rules={[{ required: true, message: '请输入项目名称' }]}
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={handleSubmit}
           >
-            <Input placeholder="请输入项目名称" />
-          </Form.Item>
+            <Form.Item
+              name="name"
+              label="项目名称"
+              rules={[{ required: true, message: '请输入项目名称' }]}
+            >
+              <Input placeholder="请输入项目名称" />
+            </Form.Item>
 
-          <Form.Item
-            name="description"
-            label="项目描述"
-          >
-            <TextArea 
-              rows={4} 
-              placeholder="请输入项目描述（可选）" 
-            />
-          </Form.Item>
+            <Form.Item
+              name="description"
+              label="项目描述"
+            >
+              <TextArea 
+                rows={4} 
+                placeholder="请输入项目描述（可选）" 
+              />
+            </Form.Item>
 
-          <Form.Item
-            name="status"
-            label="项目状态"
-            initialValue="PLANNING"
-          >
-            <Select>
-              <Select.Option value="PLANNING">规划中</Select.Option>
-              <Select.Option value="IN_PROGRESS">进行中</Select.Option>
-              <Select.Option value="TESTING">测试中</Select.Option>
-              <Select.Option value="COMPLETED">已完成</Select.Option>
-              <Select.Option value="ARCHIVED">已归档</Select.Option>
-            </Select>
-          </Form.Item>
-
-          <Form.Item className="mb-0 text-right">
-            <Space>
-              <Button onClick={() => setIsModalVisible(false)}>
-                取消
-              </Button>
-              <Button type="primary" htmlType="submit" loading={loading}>
-                {editingProject ? '更新' : '创建'}
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </Modal>
-    </Layout>
+            {editingProject && (
+              <Form.Item
+                name="status"
+                label="项目状态"
+                rules={[{ required: true, message: '请选择项目状态' }]}
+              >
+                <Select placeholder="请选择项目状态">
+                  <Select.Option value="PLANNING">规划中</Select.Option>
+                  <Select.Option value="IN_PROGRESS">进行中</Select.Option>
+                  <Select.Option value="TESTING">测试中</Select.Option>
+                  <Select.Option value="COMPLETED">已完成</Select.Option>
+                  <Select.Option value="ARCHIVED">已归档</Select.Option>
+                </Select>
+              </Form.Item>
+            )}
+          </Form>
+        </Modal>
+      </div>
+    </MainLayout>
   )
 }

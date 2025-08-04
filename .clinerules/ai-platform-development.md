@@ -11,7 +11,7 @@ Development guidelines for AI-driven platforms using Next.js, React, TypeScript,
 ## Tech stack preferences
 - Use Next.js 15 with App Router for full-stack applications
 - Prefer React 19 with TypeScript for type safety
-- Use Prisma ORM with PostgreSQL for database operations
+- Use Prisma ORM with MySQL for database operations
 - Implement Ant Design for UI components with Tailwind CSS for styling
 - Use Zustand for lightweight state management
 - Integrate OpenAI API for AI capabilities
@@ -76,6 +76,12 @@ Development guidelines for AI-driven platforms using Next.js, React, TypeScript,
 - Use descriptive variable and function names
 - Keep functions focused and single-purpose
 - Implement proper separation of concerns
+
+## TypeScript safety principles
+- Always use optional chaining (?.) when accessing object properties that might be undefined
+- Use nullish coalescing (??) for default values when dealing with null/undefined
+- Implement proper type guards for runtime type checking
+- Use strict TypeScript configuration for better type safety
 
 ## Development workflow
 - Generate Prisma client after schema changes

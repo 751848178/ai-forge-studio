@@ -14,9 +14,9 @@ import {
   Statistic,
   Row,
   Col,
-  message,
   Descriptions,
-  Progress
+  Progress,
+  App
 } from 'antd'
 import { 
   ProjectOutlined, 
@@ -29,11 +29,11 @@ import {
   BugOutlined
 } from '@ant-design/icons'
 import { useAppStore, Project, Requirement, Module, Task } from '@/store'
+import { request } from '@/lib/utils/request'
 import Link from 'next/link'
 
 const { Header, Content } = Layout
 const { Title, Paragraph } = Typography
-const { TabPane } = Tabs
 
 const statusColors = {
   PLANNING: 'blue',
@@ -51,9 +51,10 @@ const statusLabels = {
   ARCHIVED: '已归档'
 }
 
-export default function ProjectDetailPage() {
+function ProjectDetailContent() {
   const params = useParams()
   const projectId = params.id as string
+  const { message } = App.useApp()
   
   const { 
     currentProject,
@@ -71,17 +72,30 @@ export default function ProjectDetailPage() {
   const [activeTab, setActiveTab] = useState('overview')
 
   useEffect(() => {
-    if (projectId) {
+    if (projectId && projectId !== 'new') {
       loadProjectDetail()
+    } else if (projectId === 'new') {
+      // 如果是新建项目页面，设置一个默认的项目对象
+      setCurrentProject({
+        id: 'new',
+        name: '新建项目',
+        description: '',
+        status: 'PLANNING',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        tenantId: '',
+        requirements: [],
+        modules: []
+      } as any)
     }
   }, [projectId])
 
   const loadProjectDetail = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`/api/projects/${projectId}`)
-      if (response.ok) {
-        const project = await response.json()
+      const response = await request.get<any>(`/projects/${projectId}`)
+      if (response.success && response.data) {
+        const project = response.data
         setCurrentProject(project)
         setRequirements(project.requirements || [])
         setModules(project.modules || [])
@@ -97,7 +111,7 @@ export default function ProjectDetailPage() {
         }
         setTasks(allTasks)
       } else {
-        message.error('加载项目详情失败')
+        message.error(response.error?.message || '加载项目详情失败')
       }
     } catch (error) {
       console.error('Error loading project detail:', error)
@@ -254,7 +268,158 @@ export default function ProjectDetailPage() {
     {
       title: '任务数',
       key: 'taskCount',
-      render: (record: Module) => record.tasks?.length || 0
+      render: (text: any, record: Module) => record?.tasks?.length || 0
+    }
+  ]
+
+  const tabItems = [
+    {
+      key: 'overview',
+      label: '项目概览',
+      children: (
+        <>
+          {/* 项目信息 */}
+          <Card className="mb-6">
+            <Descriptions title="项目信息" bordered>
+              <Descriptions.Item label="项目名称">{currentProject.name}</Descriptions.Item>
+              <Descriptions.Item label="项目状态">
+                <Tag color={statusColors[currentProject.status as keyof typeof statusColors]}>
+                  {statusLabels[currentProject.status as keyof typeof statusLabels]}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="创建时间">
+                {new Date(currentProject.createdAt).toLocaleDateString('zh-CN')}
+              </Descriptions.Item>
+              <Descriptions.Item label="项目描述" span={3}>
+                {currentProject.description || '暂无描述'}
+              </Descriptions.Item>
+            </Descriptions>
+          </Card>
+
+          {/* 统计数据 */}
+          <Row gutter={[16, 16]} className="mb-6">
+            <Col xs={24} sm={12} lg={6}>
+              <Card>
+                <Statistic
+                  title="需求文档"
+                  value={stats.totalRequirements}
+                  prefix={<FileTextOutlined />}
+                  suffix={`/ ${stats.analyzedRequirements} 已分析`}
+                  valueStyle={{ color: '#1890ff' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card>
+                <Statistic
+                  title="功能模块"
+                  value={stats.totalModules}
+                  prefix={<CodeOutlined />}
+                  suffix={`/ ${stats.completedModules} 已完成`}
+                  valueStyle={{ color: '#52c41a' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card>
+                <Statistic
+                  title="开发任务"
+                  value={stats.totalTasks}
+                  prefix={<CheckCircleOutlined />}
+                  suffix={`/ ${stats.completedTasks} 已完成`}
+                  valueStyle={{ color: '#722ed1' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card>
+                <Statistic
+                  title="进行中任务"
+                  value={stats.inProgressTasks}
+                  prefix={<ClockCircleOutlined />}
+                  valueStyle={{ color: '#fa8c16' }}
+                />
+              </Card>
+            </Col>
+          </Row>
+
+          {/* 进度条 */}
+          <Card title="项目进度" className="mb-6">
+            <Row gutter={[16, 16]}>
+              <Col span={8}>
+                <div className="text-center">
+                  <Title level={5}>需求分析进度</Title>
+                  <Progress 
+                    type="circle" 
+                    percent={stats.totalRequirements > 0 ? Math.round((stats.analyzedRequirements / stats.totalRequirements) * 100) : 0}
+                    format={() => `${stats.analyzedRequirements}/${stats.totalRequirements}`}
+                  />
+                </div>
+              </Col>
+              <Col span={8}>
+                <div className="text-center">
+                  <Title level={5}>模块开发进度</Title>
+                  <Progress 
+                    type="circle" 
+                    percent={stats.totalModules > 0 ? Math.round((stats.completedModules / stats.totalModules) * 100) : 0}
+                    format={() => `${stats.completedModules}/${stats.totalModules}`}
+                  />
+                </div>
+              </Col>
+              <Col span={8}>
+                <div className="text-center">
+                  <Title level={5}>任务完成进度</Title>
+                  <Progress 
+                    type="circle" 
+                    percent={stats.totalTasks > 0 ? Math.round((stats.completedTasks / stats.totalTasks) * 100) : 0}
+                    format={() => `${stats.completedTasks}/${stats.totalTasks}`}
+                  />
+                </div>
+              </Col>
+            </Row>
+          </Card>
+        </>
+      )
+    },
+    {
+      key: 'requirements',
+      label: '需求文档',
+      children: (
+        <Card>
+          <Table
+            columns={requirementColumns}
+            dataSource={requirements}
+            rowKey="id"
+            loading={loading}
+            pagination={{
+              pageSize: 10,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 个需求`
+            }}
+          />
+        </Card>
+      )
+    },
+    {
+      key: 'modules',
+      label: '功能模块',
+      children: (
+        <Card>
+          <Table
+            columns={moduleColumns}
+            dataSource={modules}
+            rowKey="id"
+            loading={loading}
+            pagination={{
+              pageSize: 10,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 个模块`
+            }}
+          />
+        </Card>
+      )
     }
   ]
 
@@ -287,146 +452,21 @@ export default function ProjectDetailPage() {
 
       <Content className="p-6 bg-gray-50">
         <div className="max-w-7xl mx-auto">
-          <Tabs activeKey={activeTab} onChange={setActiveTab}>
-            <TabPane tab="项目概览" key="overview">
-              {/* 项目信息 */}
-              <Card className="mb-6">
-                <Descriptions title="项目信息" bordered>
-                  <Descriptions.Item label="项目名称">{currentProject.name}</Descriptions.Item>
-                  <Descriptions.Item label="项目状态">
-                    <Tag color={statusColors[currentProject.status as keyof typeof statusColors]}>
-                      {statusLabels[currentProject.status as keyof typeof statusLabels]}
-                    </Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="创建时间">
-                    {new Date(currentProject.createdAt).toLocaleDateString('zh-CN')}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="项目描述" span={3}>
-                    {currentProject.description || '暂无描述'}
-                  </Descriptions.Item>
-                </Descriptions>
-              </Card>
-
-              {/* 统计数据 */}
-              <Row gutter={[16, 16]} className="mb-6">
-                <Col xs={24} sm={12} lg={6}>
-                  <Card>
-                    <Statistic
-                      title="需求文档"
-                      value={stats.totalRequirements}
-                      prefix={<FileTextOutlined />}
-                      suffix={`/ ${stats.analyzedRequirements} 已分析`}
-                      valueStyle={{ color: '#1890ff' }}
-                    />
-                  </Card>
-                </Col>
-                <Col xs={24} sm={12} lg={6}>
-                  <Card>
-                    <Statistic
-                      title="功能模块"
-                      value={stats.totalModules}
-                      prefix={<CodeOutlined />}
-                      suffix={`/ ${stats.completedModules} 已完成`}
-                      valueStyle={{ color: '#52c41a' }}
-                    />
-                  </Card>
-                </Col>
-                <Col xs={24} sm={12} lg={6}>
-                  <Card>
-                    <Statistic
-                      title="开发任务"
-                      value={stats.totalTasks}
-                      prefix={<CheckCircleOutlined />}
-                      suffix={`/ ${stats.completedTasks} 已完成`}
-                      valueStyle={{ color: '#722ed1' }}
-                    />
-                  </Card>
-                </Col>
-                <Col xs={24} sm={12} lg={6}>
-                  <Card>
-                    <Statistic
-                      title="进行中任务"
-                      value={stats.inProgressTasks}
-                      prefix={<ClockCircleOutlined />}
-                      valueStyle={{ color: '#fa8c16' }}
-                    />
-                  </Card>
-                </Col>
-              </Row>
-
-              {/* 进度条 */}
-              <Card title="项目进度" className="mb-6">
-                <Row gutter={[16, 16]}>
-                  <Col span={8}>
-                    <div className="text-center">
-                      <Title level={5}>需求分析进度</Title>
-                      <Progress 
-                        type="circle" 
-                        percent={stats.totalRequirements > 0 ? Math.round((stats.analyzedRequirements / stats.totalRequirements) * 100) : 0}
-                        format={() => `${stats.analyzedRequirements}/${stats.totalRequirements}`}
-                      />
-                    </div>
-                  </Col>
-                  <Col span={8}>
-                    <div className="text-center">
-                      <Title level={5}>模块开发进度</Title>
-                      <Progress 
-                        type="circle" 
-                        percent={stats.totalModules > 0 ? Math.round((stats.completedModules / stats.totalModules) * 100) : 0}
-                        format={() => `${stats.completedModules}/${stats.totalModules}`}
-                      />
-                    </div>
-                  </Col>
-                  <Col span={8}>
-                    <div className="text-center">
-                      <Title level={5}>任务完成进度</Title>
-                      <Progress 
-                        type="circle" 
-                        percent={stats.totalTasks > 0 ? Math.round((stats.completedTasks / stats.totalTasks) * 100) : 0}
-                        format={() => `${stats.completedTasks}/${stats.totalTasks}`}
-                      />
-                    </div>
-                  </Col>
-                </Row>
-              </Card>
-            </TabPane>
-
-            <TabPane tab="需求文档" key="requirements">
-              <Card>
-                <Table
-                  columns={requirementColumns}
-                  dataSource={requirements}
-                  rowKey="id"
-                  loading={loading}
-                  pagination={{
-                    pageSize: 10,
-                    showSizeChanger: true,
-                    showQuickJumper: true,
-                    showTotal: (total) => `共 ${total} 个需求`
-                  }}
-                />
-              </Card>
-            </TabPane>
-
-            <TabPane tab="功能模块" key="modules">
-              <Card>
-                <Table
-                  columns={moduleColumns}
-                  dataSource={modules}
-                  rowKey="id"
-                  loading={loading}
-                  pagination={{
-                    pageSize: 10,
-                    showSizeChanger: true,
-                    showQuickJumper: true,
-                    showTotal: (total) => `共 ${total} 个模块`
-                  }}
-                />
-              </Card>
-            </TabPane>
-          </Tabs>
+          <Tabs 
+            activeKey={activeTab} 
+            onChange={setActiveTab}
+            items={tabItems}
+          />
         </div>
       </Content>
     </Layout>
+  )
+}
+
+export default function ProjectDetailPage() {
+  return (
+    <App>
+      <ProjectDetailContent />
+    </App>
   )
 }

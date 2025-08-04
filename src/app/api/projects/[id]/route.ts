@@ -11,10 +11,10 @@ const updateProjectSchema = z.object({
 // GET /api/projects/[id] - 获取单个项目详情
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const projectId = params.id
+    const { id: projectId } = await params
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
@@ -39,23 +39,32 @@ export async function GET(
     })
 
     if (!project) {
-      return NextResponse.json({ error: '项目不存在' }, { status: 404 })
+      return NextResponse.json({ 
+        success: false,
+        error: { code: 'PROJECT_NOT_FOUND', message: '项目不存在' }
+      }, { status: 404 })
     }
 
-    return NextResponse.json(project)
+    return NextResponse.json({
+      success: true,
+      data: project
+    })
   } catch (error) {
     console.error('Error fetching project:', error)
-    return NextResponse.json({ error: '获取项目详情失败' }, { status: 500 })
+    return NextResponse.json({ 
+      success: false,
+      error: { code: 'FETCH_FAILED', message: '获取项目详情失败' }
+    }, { status: 500 })
   }
 }
 
 // PUT /api/projects/[id] - 更新项目
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const projectId = params.id
+    const { id: projectId } = await params
     const body = await request.json()
     const validatedData = updateProjectSchema.parse(body)
 
@@ -74,31 +83,46 @@ export async function PUT(
       }
     })
 
-    return NextResponse.json(project)
+    return NextResponse.json({
+      success: true,
+      data: project
+    })
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors }, { status: 400 })
+      return NextResponse.json({ 
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: '数据验证失败', details: error.errors }
+      }, { status: 400 })
     }
     console.error('Error updating project:', error)
-    return NextResponse.json({ error: '更新项目失败' }, { status: 500 })
+    return NextResponse.json({ 
+      success: false,
+      error: { code: 'UPDATE_FAILED', message: '更新项目失败' }
+    }, { status: 500 })
   }
 }
 
 // DELETE /api/projects/[id] - 删除项目
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const projectId = params.id
+    const { id: projectId } = await params
 
     await prisma.project.delete({
       where: { id: projectId }
     })
 
-    return NextResponse.json({ message: '项目删除成功' })
+    return NextResponse.json({
+      success: true,
+      data: { message: '项目删除成功' }
+    })
   } catch (error) {
     console.error('Error deleting project:', error)
-    return NextResponse.json({ error: '删除项目失败' }, { status: 500 })
+    return NextResponse.json({ 
+      success: false,
+      error: { code: 'DELETE_FAILED', message: '删除项目失败' }
+    }, { status: 500 })
   }
 }
